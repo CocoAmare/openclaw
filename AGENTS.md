@@ -5,16 +5,86 @@
 
 ## Project Structure & Module Organization
 
-- Source code: `src/` (CLI wiring in `src/cli`, commands in `src/commands`, web provider in `src/provider-web.ts`, infra in `src/infra`, media pipeline in `src/media`).
-- Tests: colocated `*.test.ts`.
-- Docs: `docs/` (images, queue, Pi config). Built output lives in `dist/`.
-- Plugins/extensions: live under `extensions/*` (workspace packages). Keep plugin-only deps in the extension `package.json`; do not add them to the root `package.json` unless core uses them.
-- Plugins: install runs `npm install --omit=dev` in plugin dir; runtime deps must live in `dependencies`. Avoid `workspace:*` in `dependencies` (npm install breaks); put `openclaw` in `devDependencies` or `peerDependencies` instead (runtime resolves `openclaw/plugin-sdk` via jiti alias).
-- Installers served from `https://openclaw.ai/*`: live in the sibling repo `../openclaw.ai` (`public/install.sh`, `public/install-cli.sh`, `public/install.ps1`).
-- Messaging channels: always consider **all** built-in + extension channels when refactoring shared logic (routing, allowlists, pairing, command gating, onboarding, docs).
-  - Core channel docs: `docs/channels/`
-  - Core channel code: `src/telegram`, `src/discord`, `src/slack`, `src/signal`, `src/imessage`, `src/web` (WhatsApp web), `src/channels`, `src/routing`
-  - Extensions (channel plugins): `extensions/*` (e.g. `extensions/msteams`, `extensions/matrix`, `extensions/zalo`, `extensions/zalouser`, `extensions/voice-call`)
+### Top-Level Layout
+
+```
+openclaw/
+├── src/             # Main TypeScript source (ESM)
+├── extensions/      # Plugin/extension workspace packages (29 extensions)
+├── skills/          # Agent skill modules (53 skills)
+├── apps/            # Native platform apps (Android, iOS, macOS, shared Swift kit)
+├── ui/              # Web UI (Lit web components + Vite)
+├── packages/        # Workspace shims (clawdbot/, moltbot/)
+├── docs/            # Mintlify documentation site
+├── scripts/         # Build, test, deploy, and utility scripts (~67 files)
+├── test/            # Shared test setup, helpers, mocks, fixtures
+├── patches/         # pnpm patches for dependencies
+├── vendor/          # Vendored dependencies
+├── git-hooks/       # Git hook templates
+├── assets/          # Static assets
+├── dist/            # Built output (JS, JSON, protocol schema)
+└── .github/         # CI workflows, issue templates, labeler, dependabot
+```
+
+### Source Code (`src/`)
+
+- **CLI & Commands:** `src/cli/` (CLI wiring), `src/commands/` (command implementations)
+- **Gateway & Networking:** `src/gateway/` (server, control plane, protocol), `src/process/` (process management, RPC)
+- **AI & Agents:** `src/agents/` (agent integration, tools), `src/providers/` (LLM provider abstractions), `src/acp/` (Agent Communication Protocol)
+- **Messaging Channels (built-in):** `src/telegram/`, `src/discord/`, `src/slack/`, `src/signal/`, `src/imessage/`, `src/line/`, `src/web/` (WhatsApp web), `src/whatsapp/`, `src/channels/`, `src/routing/`
+- **Media & Understanding:** `src/media/` (pipeline), `src/media-understanding/`, `src/link-understanding/`, `src/tts/`
+- **Configuration & State:** `src/config/`, `src/sessions/`, `src/memory/`, `src/logging/`
+- **UI Surfaces:** `src/tui/` (terminal UI), `src/control-ui/`, `src/canvas-host/` (canvas rendering)
+- **Infrastructure:** `src/infra/` (logging, fetching, updates), `src/security/`, `src/shared/`, `src/utils/`
+- **Extension Support:** `src/plugin-sdk/` (plugin SDK), `src/channels/` (channel plugin utilities)
+- **Automation:** `src/hooks/`, `src/cron/`, `src/auto-reply/`, `src/wizard/` (onboarding), `src/pairing/`
+- **Platform:** `src/macos/`, `src/browser/`, `src/node-host/`, `src/daemon/`
+- **Entry Points:** `src/entry.ts`, `src/index.ts`, `src/runtime.ts`, `src/version.ts`, `src/globals.ts`
+- Tests are colocated as `*.test.ts` alongside source files.
+
+### Extensions (`extensions/`)
+
+29 workspace extension packages:
+- **Messaging Channels:** `bluebubbles`, `discord`, `googlechat`, `imessage`, `line`, `matrix`, `mattermost`, `msteams`, `nextcloud-talk`, `nostr`, `signal`, `slack`, `telegram`, `tlon`, `twitch`, `voice-call`, `whatsapp`, `zalo`, `zalouser`
+- **Authentication:** `google-antigravity-auth`, `google-gemini-cli-auth`, `minimax-portal-auth`
+- **Core Features:** `copilot-proxy`, `diagnostics-otel`, `llm-task`, `lobster`, `memory-core`, `memory-lancedb`, `open-prose`
+
+Plugin rules:
+- Keep plugin-only deps in the extension `package.json`; do not add them to the root `package.json` unless core uses them.
+- Install runs `npm install --omit=dev` in plugin dir; runtime deps must live in `dependencies`. Avoid `workspace:*` in `dependencies` (npm install breaks); put `openclaw` in `devDependencies` or `peerDependencies` instead (runtime resolves `openclaw/plugin-sdk` via jiti alias).
+
+### Skills (`skills/`)
+
+53 agent skill modules including: `1password`, `apple-notes`, `apple-reminders`, `bear-notes`, `camsnap`, `canvas`, `coding-agent`, `discord`, `food-order`, `gemini`, `github`, `gifgrep`, `obsidian`, `notion`, and more. Each skill has its own directory with implementation files.
+
+### Native Apps (`apps/`)
+
+- **`apps/android/`** — Gradle-based Android app (`ai.openclaw.android`)
+- **`apps/ios/`** — XcodeGen-based iOS app (`ai.openclaw.ios`)
+- **`apps/macos/`** — SwiftUI macOS menubar/status bar app (Swift Package Manager)
+- **`apps/shared/`** — OpenClawKit: shared Swift framework for iOS/macOS
+
+### Web UI (`ui/`)
+
+Lit web components built with Vite. Separate `package.json` and vitest config. Built via `pnpm ui:build`, dev server via `pnpm ui:dev`.
+
+### Workspace Packages (`packages/`)
+
+- `packages/clawdbot/` — Backward-compatibility shim
+- `packages/moltbot/` — Backward-compatibility shim
+
+pnpm workspace defined in `pnpm-workspace.yaml`: root `.`, `ui`, `packages/*`, `extensions/*`.
+
+### Installers
+
+- Served from `https://openclaw.ai/*`; live in the sibling repo `../openclaw.ai` (`public/install.sh`, `public/install-cli.sh`, `public/install.ps1`).
+
+### Messaging Channels
+
+Always consider **all** built-in + extension channels when refactoring shared logic (routing, allowlists, pairing, command gating, onboarding, docs).
+- Core channel docs: `docs/channels/`
+- Core channel code: `src/telegram`, `src/discord`, `src/slack`, `src/signal`, `src/imessage`, `src/web` (WhatsApp web), `src/channels`, `src/routing`
+- Extensions (channel plugins): `extensions/*` (e.g. `extensions/msteams`, `extensions/matrix`, `extensions/zalo`, `extensions/zalouser`, `extensions/voice-call`)
 - When adding channels/extensions/apps/docs, review `.github/labeler.yml` for label coverage.
 
 ## Docs Linking (Mintlify)
@@ -41,7 +111,7 @@
 
 ## Build, Test, and Development Commands
 
-- Runtime baseline: Node **22+** (keep Node + Bun paths working).
+- Runtime baseline: Node **22+** (engine minimum: `>=22.12.0`), pnpm **10.23.0**. Keep Node + Bun paths working.
 - Install deps: `pnpm install`
 - Pre-commit hooks: `prek install` (runs same checks as CI)
 - Also supported: `bun install` (keep `pnpm-lock.yaml` + Bun patching in sync when touching deps/patches).
@@ -49,33 +119,69 @@
 - Run CLI in dev: `pnpm openclaw ...` (bun) or `pnpm dev`.
 - Node remains supported for running built output (`dist/*`) and production installs.
 - Mac packaging (dev): `scripts/package-mac-app.sh` defaults to current arch. Release checklist: `docs/platforms/mac/release.md`.
-- Type-check/build: `pnpm build`
-- Lint/format: `pnpm lint` (oxlint), `pnpm format` (oxfmt)
-- Tests: `pnpm test` (vitest); coverage: `pnpm test:coverage`
+- Type-check/build: `pnpm build` (runs `tsc` with `--noEmit false`, canvas bundle, hook metadata copy, build info). Type-checking also available via `pnpm tsgo` (TypeScript native preview compiler).
+- Lint/format: `pnpm lint` (oxlint with `--type-aware`), `pnpm format` (oxfmt `--check`). Fix: `pnpm lint:fix`, `pnpm format:fix`.
+- Swift lint/format: `pnpm lint:swift` (swiftlint), `pnpm format:swift` (swiftformat).
+- Tests: `pnpm test` (vitest via parallel runner); coverage: `pnpm test:coverage`
+- UI: `pnpm ui:build` (build web UI), `pnpm ui:dev` (dev server), `pnpm test:ui` (UI tests).
+- Android: `pnpm android:run` (build + install + launch), `pnpm android:test` (unit tests).
+- iOS: `pnpm ios:run` (xcodegen + build + launch simulator), `pnpm ios:open` (open Xcode project).
+- macOS app: `pnpm mac:package` (package), `pnpm mac:open` (open built app).
+- Protocol: `pnpm protocol:gen` (regenerate JSON schema), `pnpm protocol:gen:swift` (regenerate Swift models), `pnpm protocol:check` (verify protocol is up to date).
+
+### CI Pipeline (`.github/workflows/ci.yml`)
+
+The CI runs on every push and PR with these jobs:
+- **install-check** — Verify `pnpm install --frozen-lockfile` succeeds.
+- **checks** (matrix, Ubuntu) — `tsgo` type-check, `build + lint`, `test` (Node + Bun), `protocol:check`, `format`.
+- **checks-windows** (matrix, Windows) — `build & lint`, `test`, `protocol:check`.
+- **checks-macos** (PRs only) — `test`.
+- **macos-app** (PRs only) — Swift `lint`, `build` (release), `test` (with coverage). Uses Xcode 26.1.
+- **android** (Ubuntu) — Gradle `test` and `build` (assembleDebug). Java 21, Android SDK 36.
+- **secrets** — `detect-secrets` scan against `.secrets.baseline`.
+- **ios** — Currently disabled in CI (`if: false`).
 
 ## Coding Style & Naming Conventions
 
-- Language: TypeScript (ESM). Prefer strict typing; avoid `any`.
-- Formatting/linting via Oxlint and Oxfmt; run `pnpm lint` before commits.
+- Language: TypeScript (ESM, `"type": "module"`). Target: `es2023`. Module: `NodeNext`. Strict mode enabled.
+- Formatting/linting via Oxlint (plugins: unicorn, typescript, oxc; categories: correctness, perf, suspicious all as errors) and Oxfmt; run `pnpm lint` before commits.
+- Oxlint config: `.oxlintrc.json`. Oxfmt config: `.oxfmtrc.jsonc`.
 - Add brief code comments for tricky or non-obvious logic.
-- Keep files concise; extract helpers instead of “V2” copies. Use existing patterns for CLI options and dependency injection via `createDefaultDeps`.
-- Aim to keep files under ~700 LOC; guideline only (not a hard guardrail). Split/refactor when it improves clarity or testability.
+- Keep files concise; extract helpers instead of "V2" copies. Use existing patterns for CLI options and dependency injection via `createDefaultDeps`.
+- Aim to keep files under ~500 LOC; guideline only (not a hard guardrail). Split/refactor when it improves clarity or testability.
 - Naming: use **OpenClaw** for product/app/docs headings; use `openclaw` for CLI command, package/binary, paths, and config keys.
 
-## Release Channels (Naming)
+## Key Dependencies
 
+- **AI/Agent:** `@mariozechner/pi-agent-core`, `@mariozechner/pi-ai`, `@mariozechner/pi-coding-agent`, `@mariozechner/pi-tui` (Pi SDK), `@agentclientprotocol/sdk` (ACP)
+- **Messaging:** `@whiskeysockets/baileys` (WhatsApp), `grammy` (Telegram), `@buape/carbon` (Discord — never update), `@slack/bolt` + `@slack/web-api`, `@line/bot-sdk`
+- **Schema/Validation:** `@sinclair/typebox`, `zod`, `ajv`
+- **Media:** `sharp`, `pdfjs-dist`, `@mozilla/readability`, `file-type`
+- **Infrastructure:** `express` (v5), `ws`, `undici`, `commander` (CLI), `chalk`, `dotenv`, `yaml`, `jiti`
+- **Build/Dev:** `typescript` (^5.9), `@typescript/native-preview` (tsgo), `rolldown`, `tsx`, `vitest`, `oxlint`, `oxfmt`
+- **Notable constraints:** Never update the Carbon dependency. Dependencies with `pnpm.patchedDependencies` must use exact versions (no `^`/`~`).
+
+## Versioning & Release Channels
+
+- Version scheme: **date-based** (`YYYY.M.D`), e.g. `2026.1.30`. Tracked in `package.json` and platform-specific locations (see version locations in Agent-Specific Notes).
+- Changelog: `CHANGELOG.md` — keep latest released version at top (no `Unreleased`); after publishing, bump version and start a new top section.
 - stable: tagged releases only (e.g. `vYYYY.M.D`), npm dist-tag `latest`.
 - beta: prerelease tags `vYYYY.M.D-beta.N`, npm dist-tag `beta` (may ship without macOS app).
 - dev: moving head on `main` (no tag; git checkout main).
 
 ## Testing Guidelines
 
-- Framework: Vitest with V8 coverage thresholds (70% lines/branches/functions/statements).
-- Naming: match source names with `*.test.ts`; e2e in `*.e2e.test.ts`.
+- Framework: Vitest with V8 coverage. Pool: `forks` (isolation). Workers: up to 16 local, 2–3 in CI.
+- Coverage thresholds: **70%** lines/functions/statements, **55%** branches (defined in `vitest.config.ts`).
+- Naming: match source names with `*.test.ts`; e2e in `*.e2e.test.ts`; live in `*.live.test.ts`.
+- Test includes: `src/**/*.test.ts`, `extensions/**/*.test.ts`, `test/format-error.test.ts`.
+- Test setup: `test/setup.ts` (global setup file).
 - Run `pnpm test` (or `pnpm test:coverage`) before pushing when you touch logic.
 - Do not set test workers above 16; tried already.
+- Timeouts: 120s test timeout, 180s hook timeout on Windows.
 - Live tests (real keys): `CLAWDBOT_LIVE_TEST=1 pnpm test:live` (OpenClaw-only) or `LIVE=1 pnpm test:live` (includes provider live tests). Docker: `pnpm test:docker:live-models`, `pnpm test:docker:live-gateway`. Onboarding Docker E2E: `pnpm test:docker:onboard`.
-- Full kit + what’s covered: `docs/testing.md`.
+- Vitest configs: `vitest.config.ts` (main), `vitest.unit.config.ts` (unit-only), `vitest.e2e.config.ts` (e2e), `vitest.gateway.config.ts` (gateway), `vitest.live.config.ts` (live), `vitest.extensions.config.ts` (extensions).
+- Full kit + what's covered: `docs/testing.md`.
 - Pure test additions/fixes generally do **not** need a changelog entry unless they alter user-facing behavior or the user asks for one.
 - Mobile: before using a simulator, check for connected real devices (iOS + Android) and prefer them when available.
 
